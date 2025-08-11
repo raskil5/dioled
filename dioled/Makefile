@@ -19,6 +19,10 @@ Background daemon to control router LEDs based on modem signal strength
 and connection status, updating every few seconds.
 endef
 
+define Build/Compile
+	true
+endef
+
 define Package/dioled/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/led_signal.lua $(1)/usr/bin/led_signal.lua
