@@ -23,33 +23,33 @@ define Package/dioled/description
 endef
 
 define Build/Prepare
-  mkdir -p $(PKG_BUILD_DIR)
+	mkdir -p $(PKG_BUILD_DIR)
 endef
 
 define Build/Compile
-  # No compile needed, only scripts
-  true
+	# No compile needed, only scripts
+	true
 endef
 
 define Package/dioled/install
-  $(INSTALL_DIR) $(1)/usr/bin
-  $(INSTALL_BIN) ./files/usr/bin/led_signal.lua $(1)/usr/bin/led_signal.lua
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./files/usr/bin/led_signal.lua $(1)/usr/bin/led_signal.lua
 
-  $(INSTALL_DIR) $(1)/etc/init.d
-  $(INSTALL_BIN) ./files/etc/init.d/dioled $(1)/etc/init.d/dioled
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/etc/init.d/dioled $(1)/etc/init.d/dioled
 
-  $(INSTALL_DIR) $(1)/etc/gcom
-  $(INSTALL_DATA) ./files/etc/gcom/signal.gcom $(1)/etc/gcom/signal.gcom
-  $(INSTALL_DATA) ./files/etc/gcom/attach.gcom $(1)/etc/gcom/attach.gcom
+	$(INSTALL_DIR) $(1)/etc/gcom
+	$(INSTALL_DATA) ./files/etc/gcom/signal.gcom $(1)/etc/gcom/signal.gcom
+	$(INSTALL_DATA) ./files/etc/gcom/attach.gcom $(1)/etc/gcom/attach.gcom
 endef
 
 define Package/dioled/postinst
-#!/bin/sh
-chmod +x /etc/init.d/dioled
-chmod +x /usr/bin/led_signal.lua
-/etc/init.d/dioled enable
-/etc/init.d/dioled start
-exit 0
+	#!/bin/sh
+	chmod +x /etc/init.d/dioled
+	chmod +x /usr/bin/led_signal.lua
+	/etc/init.d/dioled enable
+	/etc/init.d/dioled start
+	exit 0
 endef
 
 $(eval $(call BuildPackage,dioled))
