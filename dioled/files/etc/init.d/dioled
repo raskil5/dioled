@@ -1,17 +1,14 @@
 #!/bin/sh /etc/rc.common
 
-START=99
+START=95
 STOP=10
-USE_PROCD=1
-PROG=/usr/bin/led_signal.lua
 
-start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/lua $PROG
-    procd_set_param respawn
-    procd_close_instance
+start() {
+  logger "Starting dioled service"
+  /usr/bin/lua /usr/bin/led_signal.lua &
 }
 
-stop_service() {
-    killall -q lua
+stop() {
+  logger "Stopping dioled service"
+  killall led_signal.lua 2>/dev/null
 }
