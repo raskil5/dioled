@@ -1,4 +1,4 @@
-# Verify modem port responds to AT commands
+# Verify modem port
 opengt
 set com 115200n81
 set senddelay 0.2
