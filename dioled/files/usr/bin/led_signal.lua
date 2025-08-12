@@ -1,66 +1,99 @@
 #!/usr/bin/lua
 
-local signal_leds = {
-    "/sys/class/leds/blue:signal1/brightness",
-    "/sys/class/leds/blue:signal2/brightness",
-    "/sys/class/leds/blue:signal3/brightness",
-    "/sys/class/leds/blue:signal4/brightness",
-    "/sys/class/leds/blue:signal5/brightness"
+-- Auto-detect modem AT port
+local function detect_modem_port()
+    local handle = io.popen([[
+        for p in /dev/ttyUSB*; do
+            echo -e "ATI\r" > $p
+            sleep 1
+            if head -n 3 < $p 2>/dev/null | grep -qi "manufacturer"; then
+                echo $p
+                break
+            fi
+        done
+    ]])
+    local port = handle:read("*l")
+    handle:close()
+    return port or "/dev/ttyUSB0"
+end
+
+local modem_port = detect_modem_port()
+print("Using modem port: " .. modem_port)
+
+-- LED paths (adjust names if different)
+local leds = {
+    modem_blue  = "/sys/class/leds/blue:modem/brightness",
+    modem_red   = "/sys/class/leds/red:modem/brightness",
+    sig1        = "/sys/class/leds/blue:signal1/brightness",
+    sig2        = "/sys/class/leds/blue:signal2/brightness",
+    sig3        = "/sys/class/leds/blue:signal3/brightness",
+    sig4        = "/sys/class/leds/blue:signal4/brightness",
+    sig5        = "/sys/class/leds/blue:signal5/brightness"
 }
 
-local modem_blue = "/sys/class/leds/blue:modem/brightness"
-local modem_red  = "/sys/class/leds/red:modem/brightness"
-
--- AT port (same as OEM)
-local at_port = "/dev/ttyUSB2"
-
-local function run_cmd(cmd)
-    local f = io.popen(cmd)
-    if f then
-        local res = f:read("*a") or ""
-        f:close()
-        return res
-    end
-    return ""
-end
-
-local function set_led(path, state)
+-- Helper: write LED
+local function set_led(path, value)
     local f = io.open(path, "w")
     if f then
-        f:write(state)
+        f:write(tostring(value))
         f:close()
     end
 end
 
-while true do
-    -- Get signal strength
-    local csq = run_cmd(string.format("gcom -d %s -s /etc/gcom/signal.gcom", at_port))
-    local rssi = tonumber(csq:match("%+CSQ:%s*(%d+)")) or 99
+-- Get signal strength via gcom
+local function get_signal()
+    local cmd = "gcom -d " .. modem_port .. " -s /etc/gcom/signal.gcom 2>/dev/null"
+    local pipe = io.popen(cmd)
+    local output = pipe:read("*a")
+    pipe:close()
+
+    local rssi = output:match("%+CSQ:%s*(%d+),")
+    if rssi then
+        rssi = tonumber(rssi)
+        if rssi == 99 then
+            return 0
+        else
+            return math.floor((rssi / 31) * 5)  -- Map to 1–5 bars
+        end
+    end
+    return 0
+end
+
+-- Get connection state via gcom
+local function is_connected()
+    local cmd = "gcom -d " .. modem_port .. " -s /etc/gcom/attach.gcom 2>/dev/null"
+    local pipe = io.popen(cmd)
+    local output = pipe:read("*a")
+    pipe:close()
+
+    return output:match("STATE:%s*CONNECTED") ~= nil
+end
+
+-- Update LEDs
+local function update_leds()
+    local bars = get_signal()
+    local connected = is_connected()
 
     -- Reset LEDs
-    for _, led in ipairs(signal_leds) do set_led(led, "0") end
+    for i = 1, 5 do set_led(leds["sig" .. i], 0) end
+    set_led(leds.modem_blue, 0)
+    set_led(leds.modem_red, 0)
 
-    if rssi >= 20 then
-        set_led(signal_leds[5], "1")
-    elseif rssi >= 15 then
-        set_led(signal_leds[4], "1")
-    elseif rssi >= 10 then
-        set_led(signal_leds[3], "1")
-    elseif rssi >= 5 then
-        set_led(signal_leds[2], "1")
-    elseif rssi > 0 and rssi < 99 then
-        set_led(signal_leds[1], "1")
+    -- Set signal LEDs
+    for i = 1, bars do
+        set_led(leds["sig" .. i], 1)
     end
 
-    -- Check modem attach
-    local attach = run_cmd(string.format("gcom -d %s -s /etc/gcom/attach.gcom", at_port))
-    if attach:match("%+CGATT:%s*1") then
-        set_led(modem_blue, "1")
-        set_led(modem_red, "0")
+    -- Set modem LED
+    if connected then
+        set_led(leds.modem_blue, 1)
     else
-        set_led(modem_blue, "0")
-        set_led(modem_red, "1")
+        set_led(leds.modem_red, 1)
     end
+end
 
+-- Main loop
+while true do
+    update_leds()
     os.execute("sleep 5")
 end
