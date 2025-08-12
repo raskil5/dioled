@@ -1,4 +1,5 @@
 opengt
 set com 115200n81
-send "AT+CSQ^m"
-get 1 "^m"
+send "AT+CSQ\r"
+waitfor 5 "+CSQ:"
+get 1
