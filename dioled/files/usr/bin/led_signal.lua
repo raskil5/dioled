@@ -4,7 +4,7 @@ local led = {}
 
 -- Read signal strength via AT+CSQ
 function led.get_signal()
-  local f = io.popen("gcom -d /dev/ttyUSB2 -s /etc/gcom/signal.gcom 2>&1")
+  local f = io.popen("gcom -d /dev/ttyUSB0 -s /etc/gcom/signal.gcom 2>&1")
   local output = f:read("*a")
   f:close()
   local csq = output:match("CSQ: (%d+)")
@@ -13,7 +13,7 @@ end
 
 -- Check modem attachment via AT+CGATT
 function led.is_modem_connected()
-  local f = io.popen("gcom -d /dev/ttyUSB2 -s /etc/gcom/attach.gcom 2>&1")
+  local f = io.popen("gcom -d /dev/ttyUSB0 -s /etc/gcom/attach.gcom 2>&1")
   local output = f:read("*a")
   f:close()
   return output:match("CGATT: 1") ~= nil
