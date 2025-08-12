@@ -1,5 +1,8 @@
+# Get signal quality
 opengt
 set com 115200n81
+set senddelay 0.1
 send "AT+CSQ\r"
-waitfor 5 "+CSQ:"
+waitfor 2 "+CSQ:"
 get 1
+close
