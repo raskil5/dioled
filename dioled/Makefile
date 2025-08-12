@@ -15,11 +15,11 @@ define Package/dioled
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=LED signal and modem status indicator
-  DEPENDS:=+lua +comgt
+  DEPENDS:=+lua +sms-tool  # Changed from comgt to sms-tool
 endef
 
 define Package/dioled/description
-  A package to control modem and signal LEDs using gcom and Lua scripts.
+  A package to control modem and signal LEDs using sms-tool and Lua scripts.
 endef
 
 define Build/Prepare
@@ -37,14 +37,12 @@ define Package/dioled/install
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/dioled $(1)/etc/init.d/dioled
-
-	$(INSTALL_DIR) $(1)/etc/gcom
-	$(INSTALL_DATA) ./files/etc/gcom/signal.gcom $(1)/etc/gcom/signal.gcom
-	$(INSTALL_DATA) ./files/etc/gcom/attach.gcom $(1)/etc/gcom/attach.gcom
+	
+	# Removed gcom directory and files since we're using sms-tool now
 endef
 
 define Package/dioled/postinst
-	#!/bin/sh
+#!/bin/sh
 	chmod +x /etc/init.d/dioled
 	chmod +x /usr/bin/led_signal.lua
 	/etc/init.d/dioled enable
