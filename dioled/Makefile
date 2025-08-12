@@ -44,12 +44,12 @@ define Package/dioled/install
 endef
 
 define Package/dioled/postinst
-	#!/bin/sh
-	chmod +x /etc/init.d/dioled
-	chmod +x /usr/bin/led_signal.lua
-	/etc/init.d/dioled enable
-	/etc/init.d/dioled start
-	exit 0
+#!/bin/sh
+chmod +x /etc/init.d/dioled
+chmod +x /usr/bin/led_signal.lua
+/etc/init.d/dioled enable
+/etc/init.d/dioled start
+exit 0
 endef
 
 $(eval $(call BuildPackage,dioled))
