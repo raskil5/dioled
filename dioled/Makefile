@@ -1,55 +1,87 @@
-include $(TOPDIR)/rules.mk
+#!/usr/bin/lua
 
-PKG_NAME:=dioled
-PKG_VERSION:=1.1
-PKG_RELEASE:=1
+-- LED paths
+local LED_SIGNAL = {
+    "/sys/class/leds/blue:signal1/brightness",
+    "/sys/class/leds/blue:signal2/brightness",
+    "/sys/class/leds/blue:signal3/brightness",
+    "/sys/class/leds/blue:signal4/brightness",
+    "/sys/class/leds/blue:signal5/brightness"
+}
+local LED_MODEM_BLUE = "/sys/class/leds/blue:modem/brightness"
+local LED_MODEM_RED  = "/sys/class/leds/red:modem/brightness"
 
-PKG_MAINTAINER:=raskil5
-PKG_LICENSE:=GPL-2.0
+-- Helper functions
+local function led_on(path)
+    local f = io.open(path, "w")
+    if f then f:write("1\n") f:close() end
+end
 
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+local function led_off(path)
+    local f = io.open(path, "w")
+    if f then f:write("0\n") f:close() end
+end
 
-include $(INCLUDE_DIR)/package.mk
+local function set_signal_leds(count)
+    for i = 1, 5 do
+        if i <= count then
+            led_on(LED_SIGNAL[i])
+        else
+            led_off(LED_SIGNAL[i])
+        end
+    end
+end
 
-define Package/dioled
-  SECTION:=utils
-  CATEGORY:=Utilities
-  TITLE:=LED signal and modem status indicator
-  DEPENDS:=+lua +comgt
-endef
+-- Get signal level from modem
+local function get_signal()
+    local tmpfile = "/tmp/csq.txt"
+    os.execute("gcom -d /dev/ttyUSB0 -s /etc/gcom/signal.gcom > " .. tmpfile .. " 2>/dev/null")
+    local f = io.open(tmpfile, "r")
+    if not f then return nil end
 
-define Package/dioled/description
-  A package to control modem and signal LEDs using gcom and Lua scripts.
-endef
+    local data = f:read("*a")
+    f:close()
 
-define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
-endef
+    -- Expected output: +CSQ: <rssi>,<ber>
+    local rssi = data:match("%+CSQ:%s*(%d+)")
+    if rssi then
+        return tonumber(rssi)
+    else
+        return nil
+    end
+end
 
-define Build/Compile
-	# No compile needed, only scripts
-	true
-endef
+-- Convert CSQ value to signal bars (1-5)
+local function csq_to_bars(csq)
+    if not csq or csq == 99 then
+        return 0
+    elseif csq < 8 then
+        return 1
+    elseif csq < 12 then
+        return 2
+    elseif csq < 16 then
+        return 3
+    elseif csq < 20 then
+        return 4
+    else
+        return 5
+    end
+end
 
-define Package/dioled/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./files/usr/bin/led_signal.lua $(1)/usr/bin/led_signal.lua
+-- Main loop
+while true do
+    local csq = get_signal()
+    local bars = csq_to_bars(csq)
 
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/etc/init.d/dioled $(1)/etc/init.d/dioled
+    if bars > 0 then
+        set_signal_leds(bars)
+        led_on(LED_MODEM_BLUE)
+        led_off(LED_MODEM_RED)
+    else
+        set_signal_leds(0)
+        led_off(LED_MODEM_BLUE)
+        led_on(LED_MODEM_RED)
+    end
 
-	$(INSTALL_DIR) $(1)/etc/gcom
-	$(INSTALL_DATA) ./files/etc/gcom/signal.gcom $(1)/etc/gcom/signal.gcom
-	$(INSTALL_DATA) ./files/etc/gcom/attach.gcom $(1)/etc/gcom/attach.gcom
-endef
-
-define Package/dioled/postinst
-	#!/bin/sh
-	chmod +x /etc/init.d/dioled
-	chmod +x /usr/bin/led_signal.lua
-	/etc/init.d/dioled enable
-	/etc/init.d/dioled start
-	exit 0
-endef
-
-$(eval $(call BuildPackage,dioled))
+    os.execute("sleep 5")
+end
