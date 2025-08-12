@@ -1,50 +1,34 @@
 #!/usr/bin/lua
 
--- LED paths (following OEM structure)
-local LED_SIGNAL = {
-    "/sys/class/leds/blue:signal1",
-    "/sys/class/leds/blue:signal2",
-    "/sys/class/leds/blue:signal3",
-    "/sys/class/leds/blue:signal4",
-    "/sys/class/leds/blue:signal5"
+-- Configuration
+local CONFIG = {
+    LED_PATHS = {
+        SIGNAL = {
+            "/sys/class/leds/blue:signal1",
+            "/sys/class/leds/blue:signal2",
+            "/sys/class/leds/blue:signal3",
+            "/sys/class/leds/blue:signal4",
+            "/sys/class/leds/blue:signal5"
+        },
+        MODEM_BLUE = "/sys/class/leds/blue:modem",
+        MODEM_RED  = "/sys/class/leds/red:modem"
+    },
+    MODEM_PORTS = {"/dev/ttyUSB2", "/dev/ttyUSB3", "/dev/ttyUSB0", "/dev/ttyUSB1"},
+    POLL_DELAY = 5
 }
-local LED_MODEM_BLUE = "/sys/class/leds/blue:modem"  -- Normal status
-local LED_MODEM_RED  = "/sys/class/leds/red:modem"   -- Exception status
 
--- OEM-style LED control functions
-local function led_on(path)
-    os.execute(string.format("echo none > %s/trigger", path))
-    return os.execute(string.format("echo 1 > %s/brightness", path)) == 0
+-- Simple LED control
+local function set_led(path, state)
+    local cmd = string.format("echo %s > %s/brightness 2>/dev/null", state, path)
+    return os.execute(cmd) == 0
 end
 
-local function led_off(path)
-    os.execute(string.format("echo none > %s/trigger", path))
-    return os.execute(string.format("echo 0 > %s/brightness", path)) == 0
-end
-
-local function led_blink_slow(path)
-    return os.execute(string.format("echo timer > %s/trigger", path)) == 0
-end
-
-local function set_signal_leds(count)
-    for i = 1, 5 do
-        if i <= count then
-            led_on(LED_SIGNAL[i])
-        else
-            led_off(LED_SIGNAL[i])
-        end
-    end
-end
-
--- Dynamic modem port detection
+-- Find working modem port
 local function find_modem_port()
-    -- Common modem ports in order of likelihood
-    local ports = {"/dev/ttyUSB2", "/dev/ttyUSB3", "/dev/ttyUSB0", "/dev/ttyUSB1"}
-    
-    for _, port in ipairs(ports) do
-        -- Check if port exists and responds to AT commands
+    for _, port in ipairs(CONFIG.MODEM_PORTS) do
         local test_file = os.tmpname()
-        local cmd = string.format('gcom -d %s -s /etc/gcom/check_port.gcom > %s 2>/dev/null', port, test_file)
+        local cmd = string.format('gcom -d %s -s /etc/gcom/check_port.gcom > %s 2>&1', port, test_file)
+        
         if os.execute(cmd) == 0 then
             local f = io.open(test_file, "r")
             if f then
@@ -58,16 +42,16 @@ local function find_modem_port()
         end
         os.remove(test_file)
     end
-    return nil  -- No working port found
+    return nil
 end
 
--- Initialize modem port (try dynamic detection, fallback to OEM default)
-local MODEM_PORT = find_modem_port() or "/dev/ttyUSB2"
-
--- Get signal level from modem
-local function get_signal()
+-- Get signal quality
+local function get_signal(port)
+    if not port then return nil end
+    
     local tmpfile = os.tmpname()
-    local cmd = string.format('gcom -d %s -s /etc/gcom/signal.gcom > %s 2>/dev/null', MODEM_PORT, tmpfile)
+    local cmd = string.format('gcom -d %s -s /etc/gcom/signal.gcom > %s 2>/dev/null', port, tmpfile)
+    
     if os.execute(cmd) ~= 0 then
         os.remove(tmpfile)
         return nil
@@ -83,44 +67,54 @@ local function get_signal()
     f:close()
     os.remove(tmpfile)
 
-    -- Expected output: +CSQ: <rssi>,<ber>
-    local rssi = data:match("%+CSQ:%s*(%d+)")
-    return rssi and tonumber(rssi) or nil
+    return tonumber(data:match("%+CSQ:%s*(%d+)")) or nil
 end
 
--- Convert CSQ to signal bars (1-5) - OEM mapping
-local function csq_to_bars(csq)
-    if not csq or csq == 99 then
-        return 0  -- No signal
-    elseif csq < 8 then
-        return 1
-    elseif csq < 12 then
-        return 2
-    elseif csq < 16 then
-        return 3
-    elseif csq < 20 then
-        return 4
-    else
-        return 5  -- Excellent signal
+-- Convert CSQ to bars (0-5)
+local function signal_to_bars(csq)
+    if not csq or csq == 99 then return 0 end
+    if csq >= 20 then return 5 end
+    if csq >= 16 then return 4 end
+    if csq >= 12 then return 3 end
+    if csq >= 8 then return 2 end
+    return 1
+end
+
+-- Main function
+local function main()
+    -- Initialize modem port
+    local modem_port = find_modem_port() or CONFIG.MODEM_PORTS[1]
+    print("Using modem port: " .. (modem_port or "none"))
+    
+    -- Initialize all LEDs to off
+    for _, led in ipairs(CONFIG.LED_PATHS.SIGNAL) do
+        set_led(led, 0)
+    end
+    set_led(CONFIG.LED_PATHS.MODEM_BLUE, 0)
+    set_led(CONFIG.LED_PATHS.MODEM_RED, 0)
+
+    -- Main loop
+    while true do
+        local csq = get_signal(modem_port)
+        local bars = signal_to_bars(csq)
+        
+        -- Update signal LEDs
+        for i = 1, 5 do
+            set_led(CONFIG.LED_PATHS.SIGNAL[i], i <= bars and 1 or 0)
+        end
+        
+        -- Update status LEDs
+        if bars > 0 then
+            set_led(CONFIG.LED_PATHS.MODEM_BLUE, 1)
+            set_led(CONFIG.LED_PATHS.MODEM_RED, 0)
+        else
+            set_led(CONFIG.LED_PATHS.MODEM_BLUE, 0)
+            set_led(CONFIG.LED_PATHS.MODEM_RED, 1)
+        end
+        
+        os.execute("sleep " .. CONFIG.POLL_DELAY)
     end
 end
 
--- Main control loop
-while true do
-    local csq = get_signal()
-    local bars = csq_to_bars(csq)
-
-    if bars > 0 then
-        -- Good signal - blue LED on, red off (OEM pattern)
-        set_signal_leds(bars)
-        led_on(LED_MODEM_BLUE)
-        led_off(LED_MODEM_RED)
-    else
-        -- No signal - red LED on, blue off (OEM pattern)
-        set_signal_leds(0)
-        led_off(LED_MODEM_BLUE)
-        led_on(LED_MODEM_RED)
-    end
-
-    os.execute("sleep 5")  -- OEM-standard polling interval
-end
+-- Start the application
+main()
