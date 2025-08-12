@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dioled
-PKG_VERSION:=1.1
+PKG_VERSION:=1.2
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=raskil5
@@ -20,6 +20,7 @@ endef
 
 define Package/dioled/description
   A package to control modem and signal LEDs using gcom and Lua scripts.
+  Follows OEM LED behavior with blue:modem for normal status and red:modem for exceptions.
 endef
 
 define Build/Prepare
@@ -40,7 +41,6 @@ define Package/dioled/install
 
 	$(INSTALL_DIR) $(1)/etc/gcom
 	$(INSTALL_DATA) ./files/etc/gcom/signal.gcom $(1)/etc/gcom/signal.gcom
-	$(INSTALL_DATA) ./files/etc/gcom/attach.gcom $(1)/etc/gcom/attach.gcom
 endef
 
 define Package/dioled/postinst
