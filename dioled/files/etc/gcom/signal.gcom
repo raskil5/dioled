@@ -1,1 +1,4 @@
-AT+CSQ
+opengt
+set com 115200n81
+send "AT+CSQ^m"
+get 1 "^m"
