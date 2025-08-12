@@ -1,26 +1,9 @@
 #!/usr/bin/lua
 
--- Auto-detect modem AT port
-local function detect_modem_port()
-    local handle = io.popen([[
-        for p in /dev/ttyUSB*; do
-            echo -e "ATI\r" > $p
-            sleep 1
-            if head -n 3 < $p 2>/dev/null | grep -qi "manufacturer"; then
-                echo $p
-                break
-            fi
-        done
-    ]])
-    local port = handle:read("*l")
-    handle:close()
-    return port or "/dev/ttyUSB0"
-end
+-- Configuration
+local DEVICE = "/dev/ttyUSB0"
 
-local modem_port = detect_modem_port()
-print("Using modem port: " .. modem_port)
-
--- LED paths (adjust names if different)
+-- LED paths (adjust as needed)
 local leds = {
     modem_blue  = "/sys/class/leds/blue:modem/brightness",
     modem_red   = "/sys/class/leds/red:modem/brightness",
@@ -31,7 +14,7 @@ local leds = {
     sig5        = "/sys/class/leds/blue:signal5/brightness"
 }
 
--- Helper: write LED
+-- Helper function to set LED value
 local function set_led(path, value)
     local f = io.open(path, "w")
     if f then
@@ -40,56 +23,50 @@ local function set_led(path, value)
     end
 end
 
--- Get signal strength via gcom
-local function get_signal()
-    local cmd = "gcom -d " .. modem_port .. " -s /etc/gcom/signal.gcom 2>/dev/null"
-    local pipe = io.popen(cmd)
-    local output = pipe:read("*a")
-    pipe:close()
-
-    local rssi = output:match("%+CSQ:%s*(%d+),")
-    if rssi then
-        rssi = tonumber(rssi)
-        if rssi == 99 then
-            return 0
-        else
-            return math.floor((rssi / 31) * 5)  -- Map to 1–5 bars
-        end
+-- Set signal LEDs based on percentage (0-100)
+local function set_signal_leds(percent)
+    local value = math.floor((percent - 1) / 20) + 1
+    for i = 1, 5 do
+        set_led(leds["sig"..i], i <= value and 1 or 0)
     end
-    return 0
 end
 
--- Get connection state via gcom
-local function is_connected()
-    local cmd = "gcom -d " .. modem_port .. " -s /etc/gcom/attach.gcom 2>/dev/null"
-    local pipe = io.popen(cmd)
-    local output = pipe:read("*a")
-    pipe:close()
-
-    return output:match("STATE:%s*CONNECTED") ~= nil
-end
-
--- Update LEDs
+-- Main function to check signal and update LEDs
 local function update_leds()
-    local bars = get_signal()
-    local connected = is_connected()
+    -- Check if device exists
+    local f = io.open(DEVICE, "r")
+    if not f then
+        return false
+    end
+    f:close()
 
-    -- Reset LEDs
-    for i = 1, 5 do set_led(leds["sig" .. i], 0) end
-    set_led(leds.modem_blue, 0)
+    -- Get signal quality using sms_tool
+    local handle = io.popen(string.format('sms_tool -d %s at AT+CSQ 2>/dev/null', DEVICE))
+    local output = handle:read("*a")
+    handle:close()
+
+    -- Parse CSQ value
+    local csq = output:match("%+CSQ:%s*(%d+)")
+    if not csq then
+        return false
+    end
+
+    csq = tonumber(csq)
+    if csq == 99 then  -- special case for unknown signal
+        csq = 0
+    end
+
+    -- Calculate percentage (0-100)
+    local csq_per = math.floor((csq * 100) / 31)
+
+    -- Update signal LEDs
+    set_signal_leds(csq_per)
+
+    -- Simple modem status (could be enhanced)
+    set_led(leds.modem_blue, 1)  -- assume connected
     set_led(leds.modem_red, 0)
 
-    -- Set signal LEDs
-    for i = 1, bars do
-        set_led(leds["sig" .. i], 1)
-    end
-
-    -- Set modem LED
-    if connected then
-        set_led(leds.modem_blue, 1)
-    else
-        set_led(leds.modem_red, 1)
-    end
+    return true
 end
 
 -- Main loop
