@@ -1,1 +1,9 @@
-AT+CGATT?
+opengt
+set com 115200n81
+set senddelay 0.05
+waitquiet 1 0.2
+
+send "AT+CGATT?\r"
+waitfor 10 "\r\n"
+get 1 "\r\n" $s
+print $s
